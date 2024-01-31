@@ -1,73 +1,95 @@
-def Split_list_8byte(arg_list):
-    it = 0
-    list_8byte = []
-    list_list_8byte = []
 
-    for byte8 in arg_list:
-        it += 1
-        list_8byte.append(byte8)
-
-        if it == 8:
-            it = 0
-            list_list_8byte.append(list_8byte[:])
-            list_8byte.clear()
-
-    return list_list_8byte
-
-
-def Hex_to_bit(hex_strings):
+def hex_to_bit(hex_list):
     bin_list = []
-    for hex_string in hex_strings:
-        bin_sublista = [format(int(hex_val, 16), '08b') for hex_val in hex_string]
-        bin_list.append(bin_sublista)
+    for hex_string in hex_list:
+        binary = bin(int(hex_string, 16))[2:].zfill(8)
+        bin_list.append(binary)
     return bin_list
 
 
-def Bit_to_hex(bit_strings):
+def bit_to_hex(bit_list):
     hex_list = []
-    for bit_string in bit_strings:
-        hex_sublista = [format(int(bin_val, 2), '02X') for bin_val in bit_string]
-        hex_list.append(hex_sublista)
+    for binary_string in bit_list:
+        hex_value = format(int(binary_string, 2), '02X')
+        hex_list.append(hex_value)
     return hex_list
 
+def modified_LDW_AlertStatus(arg_list):
+    arg_list = hex_to_bit(arg_list)
+    byte2=arg_list[2][::-1]
+    list_byte2=list(byte2)
+    list_byte2[4:6] = '01'
+    new_byte2 = ''.join(list_byte2)
+    arg_list[2]=new_byte2[::-1]
+    return arg_list
 
-# Values to be set for each of the signals:
-# LDW_AlertStatus = 2
-# DW_FollowUpTimeDisplay = 45
-# LCA_OverrideDisplay = 1
-def Modified_signal(arg_list):
-    arg_list = Hex_to_bit(arg_list)
-    for signal in arg_list:
-        # LDW_AlertStatus = 2
-        byte2 = signal[2][::-1]
-        list_byte2 = list(byte2)
-        list_byte2[4:6] = '01'
-        new_byte2 = ''.join(list_byte2)
-        signal[2] = new_byte2[::-1]
-
-        # LCA_OverrideDisplay = 1
-        byte5 = signal[5]
-        list_byte5 = list(byte5)
-        list_byte5[-3] = '1'
-        new_byte5 = ''.join(list_byte5)
-        signal[5] = new_byte5[:]
-
-        # DW_FollowUpTimeDisplay = 45
-        byte4 = signal[4][::-1]
-        list_byte4 = list(byte4)
-        list_byte4[2:8] = bin(45)[2:]
-        new_byte4 = ''.join(list_byte4)
-        signal[4] = new_byte4[::-1]
-
-    return Bit_to_hex(arg_list)
+def modified_LCA_OverrideDisplay (arg_list):
+    arg_list = hex_to_bit(arg_list)
+    byte5=arg_list[5][::-1]
+    list_byte5=list(byte5)
+    list_byte5[-3] = '1'
+    new_byte5 = ''.join(list_byte5)
+    arg_list[5]=new_byte5[::-1]
+    return arg_list
 
 
-def Write_to_file(hex_list, path_file):
+def modified_DW_FollowUpTimeDisplay(arg_list):
+    arg_list = hex_to_bit(arg_list)
+    byte4=arg_list[4][::-1]
+    list_byte4=list(byte4)
+    list_byte4[2:8] = bin(45)[2:]
+    new_byte4 = ''.join(list_byte4)
+    arg_list[4]=new_byte4[::-1]
+    return arg_list
+
+def write_to_file(hex_list, path_file):
     with open(path_file, 'a') as f:
-        for sublista in hex_list:
-            linie = ' '.join(sublista) + ' '
-            f.write(linie)
-        f.write('\n')
+            f.write(' '.join(hex_list))
+            f.write('\n')
+
+
+
+def parse_hex_sequence(hex_sequence):
+    index = 1
+    list_PDU_after=['00']
+    while index < len(hex_sequence):
+        signal_header  = hex_sequence[index:index + 2]
+        signal_length = int(hex_sequence[index + 2], 16)
+        signal_PDU = hex_sequence[index + 3:index + 3 + signal_length]
+
+
+        if signal_header==['06', '02']:
+            new_list_LDW_AlertStatus=modified_LDW_AlertStatus(signal_PDU)
+            list_PDU_after.extend(signal_header)
+            list_PDU_after.append(hex_sequence[index + 2])
+            list_PDU_after.extend(bit_to_hex(new_list_LDW_AlertStatus))
+            list_PDU_after.append('00')
+
+        elif signal_header == ['05', 'D0']:
+            new_list_DW_FollowUpTimeDisplay  = modified_DW_FollowUpTimeDisplay (signal_PDU)
+            list_PDU_after.extend(signal_header)
+            list_PDU_after.append(hex_sequence[index + 2])
+            list_PDU_after.extend(bit_to_hex(new_list_DW_FollowUpTimeDisplay))
+            list_PDU_after.append('00')
+
+
+        elif signal_header==['06', '01']:
+            new_list_LCA_OverrideDisplay=modified_LCA_OverrideDisplay(signal_PDU)
+            list_PDU_after.extend(signal_header)
+            list_PDU_after.append(hex_sequence[index + 2])
+            list_PDU_after.extend(bit_to_hex(new_list_LCA_OverrideDisplay))
+            list_PDU_after.append('00')
+
+
+
+        if signal_header[0:2] ==['06', '01']:
+            list_after_index=hex_sequence[index:]
+            list_PDU_after.extend(list_after_index)
+            break
+        else:
+            index += 4 + signal_length
+
+    return list_PDU_after
 
 
 if __name__ == '__main__':
@@ -78,8 +100,6 @@ if __name__ == '__main__':
 
     with open(file_path, 'r') as file:
         for line in file:
-            words = line.split()
-            list_8bytes = []
-            list_8bytes_before = Split_list_8byte(words)
-            list_8bytes_after = Modified_signal(list_8bytes_before)
-            Write_to_file(list_8bytes_after, out_file_path)
+            bytes = line.split()
+            list_after=parse_hex_sequence(bytes)
+            write_to_file(list_after,out_file_path)
